@@ -1,0 +1,1622 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Content Calendar Planner (Local)</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            overscroll-behavior-y: contain;
+        }
+
+        .modal-content::-webkit-scrollbar,
+        #bulkDataInput::-webkit-scrollbar,
+        #existingContributorsList::-webkit-scrollbar,
+        #contributorsCheckboxesContainer::-webkit-scrollbar {
+            width: 8px;
+        }
+
+        .modal-content::-webkit-scrollbar-track,
+        #bulkDataInput::-webkit-scrollbar-track,
+        #existingContributorsList::-webkit-scrollbar-track,
+        #contributorsCheckboxesContainer::-webkit-scrollbar-track {
+            background: #374151;
+            /* slate-700 */
+        }
+
+        .modal-content::-webkit-scrollbar-thumb,
+        #bulkDataInput::-webkit-scrollbar-thumb,
+        #existingContributorsList::-webkit-scrollbar-thumb,
+        #contributorsCheckboxesContainer::-webkit-scrollbar-thumb {
+            background: #4b5563;
+            /* slate-600 */
+            border-radius: 4px;
+        }
+
+        .modal-content::-webkit-scrollbar-thumb:hover,
+        #bulkDataInput::-webkit-scrollbar-thumb:hover,
+        #existingContributorsList::-webkit-scrollbar-thumb:hover,
+        #contributorsCheckboxesContainer::-webkit-scrollbar-thumb:hover {
+            background: #6b7280;
+            /* slate-500 */
+        }
+
+        input[type="date"]::-webkit-calendar-picker-indicator {
+            filter: invert(0.8);
+        }
+
+        .loader {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #38bdf8;
+            /* sky-400 */
+            border-radius: 50%;
+            width: 48px;
+            height: 48px;
+            animation: spin 1s linear infinite;
+            margin: 20px auto;
+        }
+
+        @keyframes spin {
+            0% {
+                transform: rotate(0deg);
+            }
+
+            100% {
+                transform: rotate(360deg);
+            }
+        }
+
+        #contributorsCheckboxesContainer {
+            max-height: 150px;
+            overflow-y: auto;
+            border: 1px solid #4a5568;
+            padding: 0.5rem;
+            border-radius: 0.5rem;
+            background-color: #374151;
+        }
+
+        .film-specific-field {
+            display: none;
+        }
+
+        .trailer-thumbnail-container {
+            position: relative;
+            cursor: pointer;
+            margin-bottom: 0.75rem;
+            /* mb-3 */
+            border-radius: 0.5rem;
+            /* rounded-lg */
+            overflow: hidden;
+            background-color: #1f2937;
+            /* slate-800 for placeholder */
+            aspect-ratio: 16 / 9;
+            /* Maintain aspect ratio */
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .trailer-thumbnail-container img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            /* Cover the area */
+            display: block;
+        }
+
+        .trailer-thumbnail-container .play-button-overlay {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 60px;
+            height: 60px;
+            background-color: rgba(0, 0, 0, 0.6);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            pointer-events: none;
+        }
+
+        .trailer-thumbnail-container .play-button-overlay svg {
+            fill: white;
+            width: 30px;
+            height: 30px;
+        }
+
+        .embedded-trailer iframe {
+            width: 100%;
+            aspect-ratio: 16 / 9;
+            border-radius: 0.5rem;
+        }
+
+        /* Styling for date filter section */
+        #dateFilterControlsContainer>div {
+            margin-bottom: 0.5rem;
+        }
+
+        #dateFilterControlsContainer label {
+            margin-right: 0.5rem;
+        }
+    </style>
+</head>
+
+<body class="bg-slate-900 text-slate-100">
+
+    <div class="min-h-screen p-4 md:p-8">
+        <header class="mb-8 text-center">
+            <h1 class="text-4xl font-bold text-sky-400">The Nerd Social Content Calendar Planner</h1>
+            <p class="text-slate-400 mt-2">Plan and track your YouTube review coverage for TV Shows & Films. Data is
+                saved in your browser.</p>
+            <p id="storageInfo" class="text-xs text-slate-500 mt-1"></p>
+        </header>
+
+        <div id="errorDisplay"
+            class="bg-red-500 border border-red-700 text-white px-4 py-3 rounded-lg relative mb-6 shadow-lg hidden"
+            role="alert">
+            <strong class="font-bold">
+                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none"
+                    stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+                    class="inline mr-2 h-5 w-5">
+                    <path d="m21.73 18-8-14a2 2 0 0 0-3.46 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"></path>
+                    <path d="M12 9v4"></path>
+                    <path d="M12 17h.01"></path>
+                </svg>
+                Error:
+            </strong>
+            <span id="errorMessage" class="block sm:inline"></span>
+        </div>
+
+        <div id="appLoader"
+            class="min-h-screen bg-slate-900 flex flex-col items-center justify-center p-4 text-white fixed inset-0 z-[100] hidden">
+            <div class="loader"></div>
+            <p class="mt-4 text-lg">Loading App...</p>
+        </div>
+
+        <div class="mb-6 p-4 bg-slate-800 rounded-lg shadow-md flex flex-col gap-4">
+            <div class="relative w-full">
+                <input type="text" id="searchTerm" placeholder="Search entries (title, network, genre)..."
+                    class="w-full p-3 pl-10 bg-slate-700 border border-slate-600 rounded-lg focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none text-slate-100 placeholder-slate-400" />
+                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none"
+                    stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+                    class="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-slate-400">
+                    <line x1="4" x2="4" y1="21" y2="14"></line>
+                    <line x1="4" x2="4" y1="10" y2="3"></line>
+                    <line x1="12" x2="12" y1="21" y2="12"></line>
+                    <line x1="12" x2="12" y1="8" y2="3"></line>
+                    <line x1="20" x2="20" y1="21" y2="16"></line>
+                    <line x1="20" x2="20" y1="12" y2="3"></line>
+                    <line x1="2" x2="6" y1="14" y2="14"></line>
+                    <line x1="10" x2="14" y1="8" y2="8"></line>
+                    <line x1="18" x2="22" y1="16" y2="16"></line>
+                </svg>
+            </div>
+
+            <div class="flex flex-wrap gap-2 justify-start">
+                <select id="filterType"
+                    class="p-3 bg-slate-700 border border-slate-600 rounded-lg focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none text-sm">
+                    <option value="">All Types</option>
+                    <option value="TV Show">TV Shows</option>
+                    <option value="Film">Films</option>
+                </select>
+                <select id="filterStatus"
+                    class="p-3 bg-slate-700 border border-slate-600 rounded-lg focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none text-sm">
+                    <option value="">All Statuses</option>
+                </select>
+                <select id="filterPriority"
+                    class="p-3 bg-slate-700 border border-slate-600 rounded-lg focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none text-sm">
+                    <option value="">All Priorities</option>
+                </select>
+                <select id="filterAssignedTo"
+                    class="p-3 bg-slate-700 border border-slate-600 rounded-lg focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none text-sm">
+                    <option value="">All Assigned</option>
+                </select>
+                <select id="filterPressScreeningSecured"
+                    class="p-3 bg-slate-700 border border-slate-600 rounded-lg focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none text-sm">
+                    <option value="">All Press Screenings</option>
+                    <option value="yes">Secured</option>
+                    <option value="no">Not Secured</option>
+                </select>
+                <select id="sortOrder"
+                    class="p-3 bg-slate-700 border border-slate-600 rounded-lg focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none text-sm">
+                    <option value="premiereDate">Sort by Premiere Date</option>
+                    <option value="title">Sort by Title</option>
+                    <option value="pressScreeningDateTime">Sort by Press Screening Date</option>
+                </select>
+            </div>
+
+            <div id="dateFilterControlsContainer"
+                class="mt-4 pt-4 border-t border-slate-700 flex flex-wrap gap-4 items-end">
+                <div>
+                    <label for="dateFilterGranularity" class="block text-xs font-medium text-slate-400 mb-1">Filter by
+                        Date:</label>
+                    <select id="dateFilterGranularity"
+                        class="p-3 bg-slate-700 border border-slate-600 rounded-lg focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none text-sm">
+                        <option value="none">None</option>
+                        <option value="day">Day</option>
+                        <option value="week">Week</option>
+                        <option value="month">Month</option>
+                        <option value="quarter">Quarter</option>
+                        <option value="year">Year</option>
+                    </select>
+                </div>
+                <div id="referenceDateInputContainer">
+                    <label for="dateFilterReferenceDate" class="block text-xs font-medium text-slate-400 mb-1">Reference
+                        Date:</label>
+                    <input type="date" id="dateFilterReferenceDate"
+                        class="p-2.5 bg-slate-700 border border-slate-600 rounded-lg focus:ring-1 focus:ring-sky-500 focus:border-sky-500 outline-none appearance-none text-sm">
+                </div>
+                <div>
+                    <label for="dateFilterRelation"
+                        class="block text-xs font-medium text-slate-400 mb-1">Relation:</label>
+                    <select id="dateFilterRelation"
+                        class="p-3 bg-slate-700 border border-slate-600 rounded-lg focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none text-sm">
+                        <option value="during">During Selected Period</option>
+                        <option value="before">Before Selected Period</option>
+                        <option value="after">After Selected Period</option>
+                    </select>
+                </div>
+                <button id="clearDateFilterBtn"
+                    class="p-3 bg-slate-600 hover:bg-slate-500 text-white rounded-lg text-sm">Clear Date Filter</button>
+            </div>
+
+
+            <div class="flex gap-2 w-full justify-center md:justify-end mt-4">
+                <button id="manageContributorsBtn"
+                    class="flex items-center justify-center bg-indigo-500 hover:bg-indigo-600 text-white font-semibold py-2 px-3 rounded-lg shadow-md transition duration-150 ease-in-out text-xs">
+                    Manage Contributors
+                </button>
+                <button id="bulkAddBtn"
+                    class="flex items-center justify-center bg-teal-500 hover:bg-teal-600 text-white font-semibold py-2 px-3 rounded-lg shadow-md transition duration-150 ease-in-out text-xs">
+                    Bulk Add Entries
+                </button>
+                <button id="addShowBtn"
+                    class="flex items-center justify-center bg-sky-500 hover:bg-sky-600 text-white font-semibold py-2 px-4 rounded-lg shadow-md transition duration-150 ease-in-out text-xs">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none"
+                        stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+                        class="mr-1 h-4 w-4">
+                        <circle cx="12" cy="12" r="10"></circle>
+                        <line x1="12" y1="8" x2="12" y2="16"></line>
+                        <line x1="8" y1="12" x2="16" y2="12"></line>
+                    </svg>
+                    Add Entry
+                </button>
+            </div>
+        </div>
+
+
+        <div id="showsLoader" class="hidden">
+            <div class="loader"></div>
+            <p class="mt-4 text-lg text-slate-300 text-center">Loading entries...</p>
+        </div>
+
+        <div id="noShowsMessage" class="text-center py-10 bg-slate-800 rounded-lg shadow hidden">
+            <svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 24 24" fill="none"
+                stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+                class="mx-auto h-16 w-16 text-slate-500 mb-4">
+                <rect width="20" height="15" x="2" y="7" rx="2" ry="2"></rect>
+                <polyline points="17 2 12 7 7 2"></polyline>
+            </svg>
+            <p class="text-xl text-slate-300">No entries match your current filters or no entries added yet.</p>
+            <p class="text-slate-400 mt-2">Try adjusting your search or filters, or add a new entry!</p>
+        </div>
+
+        <div id="showsGrid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        </div>
+
+        <div id="showModal"
+            class="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center p-4 z-50 backdrop-blur-sm hidden">
+            <div
+                class="bg-slate-800 p-6 md:p-8 rounded-xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto modal-content">
+                <h2 id="modalTitle" class="text-2xl font-semibold mb-6 text-sky-400">Add New Entry</h2>
+                <div id="modalErrorMessage"
+                    class="bg-red-100 border border-red-400 text-red-700 px-4 py-2 rounded-md mb-4 hidden"></div>
+                <form id="showForm" class="space-y-4">
+                    <input type="hidden" id="showId" name="id">
+                    <div>
+                        <label for="entryType" class="block text-sm font-medium text-slate-300 mb-1">Entry Type
+                            *</label>
+                        <select name="entryType" id="entryType" required
+                            class="w-full p-2.5 bg-slate-700 border border-slate-600 rounded-lg focus:ring-1 focus:ring-sky-500 focus:border-sky-500 outline-none">
+                            <option value="TV Show">TV Show</option>
+                            <option value="Film">Film</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label for="title" class="block text-sm font-medium text-slate-300 mb-1">Title *</label>
+                        <input type="text" name="title" id="title" required
+                            class="w-full p-2.5 bg-slate-700 border border-slate-600 rounded-lg focus:ring-1 focus:ring-sky-500 focus:border-sky-500 outline-none">
+                    </div>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                            <label for="networkPlatform"
+                                class="block text-sm font-medium text-slate-300 mb-1">Network/Platform/Distributor</label>
+                            <input type="text" name="networkPlatform" id="networkPlatform"
+                                class="w-full p-2.5 bg-slate-700 border border-slate-600 rounded-lg focus:ring-1 focus:ring-sky-500 focus:border-sky-500 outline-none">
+                        </div>
+                        <div>
+                            <label for="premiereDate"
+                                class="block text-sm font-medium text-slate-300 mb-1">Premiere/Release Date *</label>
+                            <input type="date" name="premiereDate" id="premiereDate" required
+                                class="w-full p-2.5 bg-slate-700 border border-slate-600 rounded-lg focus:ring-1 focus:ring-sky-500 focus:border-sky-500 outline-none appearance-none">
+                        </div>
+                    </div>
+                    <div>
+                        <label for="trailerLink" class="block text-sm font-medium text-slate-300 mb-1">Trailer Link
+                            (YouTube Preferred)</label>
+                        <input type="url" name="trailerLink" id="trailerLink"
+                            class="w-full p-2.5 bg-slate-700 border border-slate-600 rounded-lg focus:ring-1 focus:ring-sky-500 focus:border-sky-500 outline-none">
+                    </div>
+                    <div>
+                        <label for="genre" class="block text-sm font-medium text-slate-300 mb-1">Genre(s)</label>
+                        <input type="text" name="genre" id="genre"
+                            class="w-full p-2.5 bg-slate-700 border border-slate-600 rounded-lg focus:ring-1 focus:ring-sky-500 focus:border-sky-500 outline-none">
+                    </div>
+                    <div>
+                        <label for="keyIPSource" class="block text-sm font-medium text-slate-300 mb-1">Key IP Source
+                            (e.g., Novel, Comic, Original)</label>
+                        <input type="text" name="keyIPSource" id="keyIPSource"
+                            class="w-full p-2.5 bg-slate-700 border border-slate-600 rounded-lg focus:ring-1 focus:ring-sky-500 focus:border-sky-500 outline-none">
+                    </div>
+                    <div>
+                        <label for="description"
+                            class="block text-sm font-medium text-slate-300 mb-1">Description/Synopsis</label>
+                        <textarea name="description" id="description" rows="3"
+                            class="w-full p-2.5 bg-slate-700 border border-slate-600 rounded-lg focus:ring-1 focus:ring-sky-500 focus:border-sky-500 outline-none"></textarea>
+                    </div>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                            <label for="reviewStatus" class="block text-sm font-medium text-slate-300 mb-1">Review
+                                Status</label>
+                            <select name="reviewStatus" id="reviewStatus"
+                                class="w-full p-2.5 bg-slate-700 border border-slate-600 rounded-lg focus:ring-1 focus:ring-sky-500 focus:border-sky-500 outline-none"></select>
+                        </div>
+                        <div>
+                            <label for="coveragePriority" class="block text-sm font-medium text-slate-300 mb-1">Coverage
+                                Priority</label>
+                            <select name="coveragePriority" id="coveragePriority"
+                                class="w-full p-2.5 bg-slate-700 border border-slate-600 rounded-lg focus:ring-1 focus:ring-sky-500 focus:border-sky-500 outline-none"></select>
+                        </div>
+                    </div>
+
+                    <div id="tvScreenerFields" class="space-y-2">
+                        <div class="flex items-center">
+                            <input type="checkbox" name="screenerRequested" id="screenerRequested"
+                                class="h-4 w-4 text-sky-600 border-slate-500 rounded focus:ring-sky-500">
+                            <label for="screenerRequested" class="ml-2 block text-sm text-slate-300">Screener Link
+                                Requested?</label>
+                        </div>
+                        <div id="screenerRequestedDateContainer" class="hidden">
+                            <label for="screenerRequestedDate"
+                                class="block text-sm font-medium text-slate-300 mb-1">Screener Link Requested
+                                Date</label>
+                            <input type="date" name="screenerRequestedDate" id="screenerRequestedDate"
+                                class="w-full p-2.5 bg-slate-700 border border-slate-600 rounded-lg focus:ring-1 focus:ring-sky-500 focus:border-sky-500 outline-none appearance-none">
+                        </div>
+                        <div class="flex items-center mt-2">
+                            <input type="checkbox" name="screenerReceived" id="screenerReceived"
+                                class="h-4 w-4 text-sky-600 border-slate-500 rounded focus:ring-sky-500">
+                            <label for="screenerReceived" class="ml-2 block text-sm text-slate-300">Screener Link
+                                Received?</label>
+                        </div>
+                        <div id="screenerReceivedDateContainer" class="hidden">
+                            <label for="screenerReceivedDate"
+                                class="block text-sm font-medium text-slate-300 mb-1">Screener Link Received
+                                Date</label>
+                            <input type="date" name="screenerReceivedDate" id="screenerReceivedDate"
+                                class="w-full p-2.5 bg-slate-700 border border-slate-600 rounded-lg focus:ring-1 focus:ring-sky-500 focus:border-sky-500 outline-none appearance-none">
+                        </div>
+                    </div>
+
+                    <div id="filmPressScreeningFields" class="space-y-2 film-specific-field">
+                        <div class="flex items-center">
+                            <input type="checkbox" name="pressScreeningAttendanceRequested"
+                                id="pressScreeningAttendanceRequested"
+                                class="h-4 w-4 text-sky-600 border-slate-500 rounded focus:ring-sky-500">
+                            <label for="pressScreeningAttendanceRequested"
+                                class="ml-2 block text-sm text-slate-300">Press Screening Attendance Requested?</label>
+                        </div>
+                        <div id="pressScreeningRequestDateContainer" class="hidden">
+                            <label for="pressScreeningRequestDate"
+                                class="block text-sm font-medium text-slate-300 mb-1">Press Screening Request
+                                Date</label>
+                            <input type="date" name="pressScreeningRequestDate" id="pressScreeningRequestDate"
+                                class="w-full p-2.5 bg-slate-700 border border-slate-600 rounded-lg focus:ring-1 focus:ring-sky-500 focus:border-sky-500 outline-none appearance-none">
+                        </div>
+                        <div class="flex items-center mt-2">
+                            <input type="checkbox" name="pressScreeningSecured" id="pressScreeningSecured"
+                                class="h-4 w-4 text-sky-600 border-slate-500 rounded focus:ring-sky-500">
+                            <label for="pressScreeningSecured" class="ml-2 block text-sm text-slate-300">Press Screening
+                                Secured?</label>
+                        </div>
+                        <div id="pressScreeningDateTimeContainer" class="hidden">
+                            <label for="pressScreeningDateTime"
+                                class="block text-sm font-medium text-slate-300 mb-1">Press Screening Date</label>
+                            <input type="date" name="pressScreeningDateTime" id="pressScreeningDateTime"
+                                class="w-full p-2.5 bg-slate-700 border border-slate-600 rounded-lg focus:ring-1 focus:ring-sky-500 focus:border-sky-500 outline-none appearance-none">
+                        </div>
+                    </div>
+
+                    <div>
+                        <label for="assignedTo" class="block text-sm font-medium text-slate-300 mb-1">Assigned To
+                            (Lead)</label>
+                        <input type="text" name="assignedTo" id="assignedTo"
+                            class="w-full p-2.5 bg-slate-700 border border-slate-600 rounded-lg focus:ring-1 focus:ring-sky-500 focus:border-sky-500 outline-none">
+                    </div>
+                    <div>
+                        <label for="reviewProducer" class="block text-sm font-medium text-slate-300 mb-1">Review
+                            Producer</label>
+                        <input type="text" name="reviewProducer" id="reviewProducer"
+                            class="w-full p-2.5 bg-slate-700 border border-slate-600 rounded-lg focus:ring-1 focus:ring-sky-500 focus:border-sky-500 outline-none">
+                    </div>
+
+                    <div>
+                        <label class="block text-sm font-medium text-slate-300 mb-1">Contributors (Critics)</label>
+                        <div id="contributorsCheckboxesContainer" class="space-y-1">
+                        </div>
+                    </div>
+
+                    <div>
+                        <label for="notes" class="block text-sm font-medium text-slate-300 mb-1">Notes</label>
+                        <textarea name="notes" id="notes" rows="3"
+                            class="w-full p-2.5 bg-slate-700 border border-slate-600 rounded-lg focus:ring-1 focus:ring-sky-500 focus:border-sky-500 outline-none"></textarea>
+                    </div>
+                    <div>
+                        <label for="youtubeLink" class="block text-sm font-medium text-slate-300 mb-1">YouTube Link
+                            (Published Review)</label>
+                        <input type="url" name="youtubeLink" id="youtubeLink"
+                            class="w-full p-2.5 bg-slate-700 border border-slate-600 rounded-lg focus:ring-1 focus:ring-sky-500 focus:border-sky-500 outline-none">
+                    </div>
+                    <div class="flex justify-end gap-4 pt-4">
+                        <button type="button" id="cancelModalBtn"
+                            class="py-2 px-4 bg-slate-600 hover:bg-slate-500 text-slate-100 rounded-lg transition">Cancel</button>
+                        <button type="submit"
+                            class="py-2 px-6 bg-sky-500 hover:bg-sky-600 text-white font-semibold rounded-lg transition">Save
+                            Entry</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <div id="confirmationModal"
+            class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-[60] backdrop-blur-sm hidden">
+            <div class="bg-slate-800 p-6 rounded-xl shadow-2xl w-full max-w-md">
+                <h3 id="confirmationTitle" class="text-xl font-semibold mb-4 text-sky-400">Confirm Action</h3>
+                <p id="confirmationMessage" class="text-slate-300 mb-6">Are you sure?</p>
+                <div class="flex justify-end gap-4">
+                    <button id="cancelConfirmBtn"
+                        class="py-2 px-4 bg-slate-600 hover:bg-slate-500 text-slate-100 rounded-lg transition">Cancel</button>
+                    <button id="confirmActionBtn"
+                        class="py-2 px-4 bg-red-500 hover:bg-red-600 text-white rounded-lg transition">Confirm</button>
+                </div>
+            </div>
+        </div>
+
+        <div id="contributorManagementModal"
+            class="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center p-4 z-[70] backdrop-blur-sm hidden">
+            <div class="bg-slate-800 p-6 md:p-8 rounded-xl shadow-2xl w-full max-w-lg modal-content">
+                <h2 class="text-2xl font-semibold mb-6 text-sky-400">Manage Contributors</h2>
+                <div class="mb-4">
+                    <label for="newContributorName" class="block text-sm font-medium text-slate-300 mb-1">New
+                        Contributor Name</label>
+                    <div class="flex gap-2">
+                        <input type="text" id="newContributorName" placeholder="Enter name..."
+                            class="flex-grow p-2.5 bg-slate-700 border border-slate-600 rounded-lg focus:ring-1 focus:ring-sky-500 focus:border-sky-500 outline-none">
+                        <button id="addContributorBtn"
+                            class="py-2 px-4 bg-sky-500 hover:bg-sky-600 text-white font-semibold rounded-lg transition">Add</button>
+                    </div>
+                </div>
+                <h3 class="text-lg font-medium text-slate-300 mb-2">Existing Contributors</h3>
+                <div id="existingContributorsList"
+                    class="space-y-2 max-h-60 overflow-y-auto p-2 bg-slate-700 border border-slate-600 rounded-lg">
+                </div>
+                <div class="flex justify-end mt-6">
+                    <button id="closeContributorModalBtn"
+                        class="py-2 px-4 bg-slate-600 hover:bg-slate-500 text-slate-100 rounded-lg transition">Close</button>
+                </div>
+            </div>
+        </div>
+
+        <div id="bulkAddModal"
+            class="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center p-4 z-[70] backdrop-blur-sm hidden">
+            <div class="bg-slate-800 p-6 md:p-8 rounded-xl shadow-2xl w-full max-w-2xl modal-content">
+                <h2 class="text-2xl font-semibold mb-6 text-sky-400">Bulk Add Entries</h2>
+                <p class="text-sm text-slate-400 mb-2">Paste an array of entry objects in JSON format below. Required
+                    fields: <code>type</code> ("TV Show" or "Film"), <code>title</code>, <code>premiereDate</code>
+                    (YYYY-MM-DD).</p>
+                <p class="text-xs text-slate-500 mb-4">Example:
+                    <code>[{"type": "Film", "title": "My Awesome Film", "premiereDate": "2025-12-01", "networkPlatform": "Indie Flix", "genre": "Sci-Fi"}]</code>
+                </p>
+                <textarea id="bulkDataInput" rows="10"
+                    class="w-full p-2.5 bg-slate-700 border border-slate-600 rounded-lg focus:ring-1 focus:ring-sky-500 focus:border-sky-500 outline-none mb-4"
+                    placeholder="Paste JSON data here..."></textarea>
+                <div id="bulkAddStatus" class="text-sm mb-4"></div>
+                <div class="flex justify-end gap-4">
+                    <button id="closeBulkAddModalBtn"
+                        class="py-2 px-4 bg-slate-600 hover:bg-slate-500 text-slate-100 rounded-lg transition">Close</button>
+                    <button id="importBulkDataBtn"
+                        class="py-2 px-6 bg-teal-500 hover:bg-teal-600 text-white font-semibold rounded-lg transition">Import
+                        Entries</button>
+                </div>
+            </div>
+        </div>
+
+
+        <footer class="text-center mt-12 py-4 border-t border-slate-700">
+            <p id="appInfoDisplay" class="text-sm text-slate-500">© <span id="currentYear"></span> Content Calendar
+                Planner. Data stored locally in browser.</p>
+        </footer>
+    </div>
+
+    <script>
+        // --- App Configuration & State ---
+        const CURRENT_STORAGE_KEY = 'contentPlannerEntries_v2';
+        const PREVIOUS_STORAGE_KEY_V1 = 'contentPlannerEntries';
+        const OLDEST_KNOWN_KEY = 'contentPlannerShows';
+
+        const LOCAL_STORAGE_KEY_CONTRIBUTORS = 'contentPlannerContributors';
+        let allEntries = [];
+        let allContributors = [];
+
+        const reviewStatuses = ["Not Started", "Planning", "Researching", "Scripting", "Filming", "Editing", "Scheduled", "Published", "Skipped"];
+        const coveragePriorities = ["High", "Medium", "Low"];
+
+        const initialEntries = [
+            // June 2025 NEW TV Shows
+            { type: "TV Show", title: "Iggy and Mr. Kirk", networkPlatform: "Great American Family", premiereDate: "2025-06-02", genre: "Children's Series", keyIPSource: "Original" },
+            { type: "TV Show", title: "Sara – Woman in the Shadows", networkPlatform: "Netflix", premiereDate: "2025-06-03", genre: "Crime Drama", keyIPSource: "Novel Series ('Le indagini di Sara')" },
+            { type: "TV Show", title: "Stick", networkPlatform: "Apple TV+", premiereDate: "2025-06-04", genre: "Comedy, Sports Drama", keyIPSource: "Original" },
+            { type: "TV Show", title: "Chespirito: Not Really on Purpose", networkPlatform: "Max/HBO", premiereDate: "2025-06-05", genre: "Biographical Series, Drama", keyIPSource: "True Story (Roberto Gómez Bolaños)" },
+            { type: "TV Show", title: "Phineas and Ferb (Revival)", networkPlatform: "Disney Channel", premiereDate: "2025-06-05", genre: "Animated Comedy", keyIPSource: "Revival (Original Series)" },
+            { type: "TV Show", title: "Mercy For None (Gwang-jang)", networkPlatform: "Netflix", premiereDate: "2025-06-06", genre: "K-Drama, Crime Action Thriller", keyIPSource: "Webtoon ('Gwangjang')" },
+            { type: "TV Show", title: "The Survivors", networkPlatform: "Netflix", premiereDate: "2025-06-06", genre: "Australian Drama, Crime-Mystery", keyIPSource: "Novel (by Jane Harper)" },
+            { type: "TV Show", title: "Wylde Pak", networkPlatform: "Nickelodeon", premiereDate: "2025-06-06", genre: "Kids & Family, Animated Comedy", keyIPSource: "Original" },
+            { type: "TV Show", title: "Art Detectives", networkPlatform: "Acorn TV", premiereDate: "2025-06-09", genre: "Drama, Mystery, Crime", keyIPSource: "Original" },
+            { type: "TV Show", title: "Divorced Sistas", networkPlatform: "BET+ (Sneak Peek BET)", premiereDate: "2025-06-10", genre: "Drama", keyIPSource: "Spinoff (Tyler Perry's Sistas)" },
+            { type: "TV Show", title: "Families Like Ours", networkPlatform: "Netflix", premiereDate: "2025-06-10", genre: "Danish Drama Miniseries, Climate Fiction", keyIPSource: "Original" },
+            { type: "TV Show", title: "Revival", networkPlatform: "Syfy", premiereDate: "2025-06-12", genre: "Drama, Thriller, Supernatural", keyIPSource: "Comic (by Tim Seeley & Mike Norton)" },
+            { type: "TV Show", title: "Super Sara", networkPlatform: "Max/HBO", premiereDate: "2025-06-13", genre: "Kids & Family, Animated", keyIPSource: "Original" },
+            { type: "TV Show", title: "Patience", networkPlatform: "PBS", premiereDate: "2025-06-15", genre: "Crime Drama", keyIPSource: "Adaptation (French series 'Astrid')" },
+            { type: "TV Show", title: "We Were Liars", networkPlatform: "Amazon Prime Video", premiereDate: "2025-06-18", genre: "Psychological Thriller, Mystery Drama", keyIPSource: "Novel (by E. Lockhart)" },
+            { type: "TV Show", title: "Outrageous", networkPlatform: "BritBox", premiereDate: "2025-06-18", genre: "Historical Drama, Comedy-Drama", keyIPSource: "Biography ('The Sisters: The Saga of the Mitford Family')" },
+            { type: "TV Show", title: "The Waterfront", networkPlatform: "Netflix", premiereDate: "2025-06-19", genre: "Drama (Family/Crime)", keyIPSource: "Original" },
+            { type: "TV Show", title: "Ironheart", networkPlatform: "Disney+", premiereDate: "2025-06-24", genre: "Action & Adventure, Sci-Fi, Superhero (MCU)", keyIPSource: "Comic (Marvel Comics)" },
+            { type: "TV Show", title: "Countdown", networkPlatform: "Amazon Prime Video", premiereDate: "2025-06-25", genre: "Action-Thriller, Conspiracy Thriller", keyIPSource: "Original" },
+            { type: "TV Show", title: "Smoke", networkPlatform: "Apple TV+", premiereDate: "2025-06-27", genre: "Crime Drama, Thriller", keyIPSource: "Podcast ('Firebug')" },
+            { type: "TV Show", title: "Nautilus", networkPlatform: "AMC", premiereDate: "2025-06-29", genre: "Adventure Drama, Origin Story", keyIPSource: "Novel ('Twenty Thousand Leagues Under the Sea')" },
+
+            // June 2025 RETURNING TV Shows
+            { type: "TV Show", title: "Criminal Code S2", networkPlatform: "Netflix", premiereDate: "2025-06-04", genre: "Brazilian Action Drama", keyIPSource: "Returning S2", description: "Proven International Performer from Brazil." },
+            { type: "TV Show", title: "Eva Lasting (La Primera Vez) S3", networkPlatform: "Netflix", premiereDate: "2025-06-04", genre: "Colombian Romantic Drama", keyIPSource: "Returning S3", description: "Landmark 3rd Season for Colombian Netflix Series." },
+            { type: "TV Show", title: "Tires S2", networkPlatform: "Netflix", premiereDate: "2025-06-05", genre: "Comedy", keyIPSource: "Returning S2", description: "Shane Gillis vehicle, strong S1 interest, increased budget." },
+            { type: "TV Show", title: "Barracuda Queens S2", networkPlatform: "Netflix", premiereDate: "2025-06-05", genre: "Swedish Heist Drama", keyIPSource: "Returning S2", description: "International teen drama, five-year time jump." },
+            { type: "TV Show", title: "Ginny & Georgia S3", networkPlatform: "Netflix", premiereDate: "2025-06-05", genre: "Drama, Coming-of-Age", keyIPSource: "Returning S3", description: "Strong Youth Appeal, High Viewership, Dual S3/S4 Renewal." },
+            { type: "TV Show", title: "BMF S4", networkPlatform: "Starz", premiereDate: "2025-06-06", genre: "Crime Drama, Biographical", keyIPSource: "Returning S4", description: "High Viewership, Key Starz Franchise." },
+            { type: "TV Show", title: "Resident Alien S4", networkPlatform: "USA Network/Syfy", premiereDate: "2025-06-06", genre: "Sci-Fi Comedy, Drama", keyIPSource: "Returning S4", description: "Network Move (Co-air), Loyal Fanbase, Budget Cuts." },
+            { type: "TV Show", title: "Fubar S2", networkPlatform: "Netflix", premiereDate: "2025-06-12", genre: "Action-Comedy, Spy Thriller", keyIPSource: "Returning S2", description: "Schwarzenegger Lead, Carrie-Anne Moss Joins." },
+            { type: "TV Show", title: "Kings of Jo'burg S3", networkPlatform: "Netflix", premiereDate: "2025-06-13", genre: "South African Crime/Supernatural", keyIPSource: "Returning S3", description: "Key African Original for Netflix." },
+            { type: "TV Show", title: "Grantchester S10", networkPlatform: "PBS", premiereDate: "2025-06-15", genre: "British Mystery Drama", keyIPSource: "Returning S10", description: "Long-running PBS Masterpiece Staple." },
+            { type: "TV Show", title: "The Buccaneers S2", networkPlatform: "Apple TV+", premiereDate: "2025-06-18", genre: "Period Drama", keyIPSource: "Returning S2", description: "Prestige Returning Drama for Apple TV+." },
+            { type: "TV Show", title: "Children Ruin Everything S4B (Final Season)", networkPlatform: "The CW", premiereDate: "2025-06-18", genre: "Sitcom, Family", keyIPSource: "Returning S4B (Final Season)", description: "Final Season Episodes, Canadian Acquisition." },
+            { type: "TV Show", title: "The Gilded Age S3", networkPlatform: "Max/HBO", premiereDate: "2025-06-22", genre: "Historical Drama", keyIPSource: "Returning S3", description: "Julian Fellowes Creator, HBO Prestige Drama." },
+            { type: "TV Show", title: "The Bear S4", networkPlatform: "FX/Hulu", premiereDate: "2025-06-25", genre: "Comedy-Drama", keyIPSource: "Returning S4", description: "Critically Acclaimed, Emmy Winner, Cultural Hit." },
+            { type: "TV Show", title: "Squid Game S3 (Final Season)", networkPlatform: "Netflix", premiereDate: "2025-06-27", genre: "Thriller, Drama, Survival", keyIPSource: "Returning S3 (Final Season)", description: "Final Season, Global Phenomenon, Massive Anticipation." },
+            { type: "TV Show", title: "Pokémon Horizons: The Series S2, Part 3", networkPlatform: "Netflix", premiereDate: "2025-06-27", genre: "Anime, Kids & Family", keyIPSource: "Returning S2, Part 3", description: "Global Children's IP, Staggered Part Release." },
+            { type: "TV Show", title: "SpongeBob SquarePants S14", networkPlatform: "Paramount+", premiereDate: "2025-06-04", genre: "Animated Comedy, Kids & Family", keyIPSource: "Returning S14", description: "Iconic, Long-Running Children's Franchise." },
+            { type: "TV Show", title: "The Really Loud House S2", networkPlatform: "Paramount+", premiereDate: "2025-06-11", genre: "Live-Action Comedy, Kids & Family", keyIPSource: "Returning S2", description: "Animated IP Extension (from The Loud House)." },
+            { type: "TV Show", title: "The Patrick Star Show S3", networkPlatform: "Paramount+", premiereDate: "2025-06-25", genre: "Animated Comedy, Kids & Family", keyIPSource: "Returning S3", description: "SpongeBob SquarePants Franchise Spin-off." },
+            { type: "TV Show", title: "The Mountain Detective (Alex Hugo) S3", networkPlatform: "PBS", premiereDate: "2025-06-01", genre: "French Crime Drama", keyIPSource: "Returning S3 (Ongoing)", description: "Walter Presents International Drama Offering." },
+
+            // June 2025 Films
+            { type: "Film", title: "Dogma: Resurrected! (25th Anniv.)", networkPlatform: "Iconic Events Releasing", premiereDate: "2025-06-05", genre: "Adventure/Comedy/Drama/Fantasy", keyIPSource: "Re-release (Original Film)" },
+            { type: "Film", title: "From the World of John Wick: Ballerina", networkPlatform: "Lionsgate", premiereDate: "2025-06-06", genre: "Action/Thriller", keyIPSource: "John Wick Franchise (Spin-off)" },
+            { type: "Film", title: "The Phoenician Scheme", networkPlatform: "Focus Features", premiereDate: "2025-06-06", genre: "Action/Comedy/Crime/Drama/Thriller", keyIPSource: "Original" },
+            { type: "Film", title: "Dangerous Animals", networkPlatform: "IFC Films", premiereDate: "2025-06-06", genre: "Horror/Thriller", keyIPSource: "Original" },
+            { type: "Film", title: "The Life of Chuck", networkPlatform: "Neon", premiereDate: "2025-06-06", genre: "Drama/Fantasy/Sci-Fi", keyIPSource: "Novel (Stephen King)" },
+            { type: "Film", title: "The Ritual", networkPlatform: "XYZ Films", premiereDate: "2025-06-06", genre: "Horror", keyIPSource: "Original" },
+            { type: "Film", title: "I Don't Understand You", networkPlatform: "Vertical Entertainment", premiereDate: "2025-06-06", genre: "Comedy/Horror", keyIPSource: "Original" },
+            { type: "Film", title: "DAN DA DAN: Evil Eye", networkPlatform: "GKIDS", premiereDate: "2025-06-06", genre: "Animation", keyIPSource: "Manga" },
+            { type: "Film", title: "How to Train Your Dragon (Live-Action)", networkPlatform: "Universal Pictures", premiereDate: "2025-06-13", genre: "Action/Adventure/Comedy/Family/Fantasy", keyIPSource: "Animated Film Series/Books" },
+            { type: "Film", title: "Materialists", networkPlatform: "A24", premiereDate: "2025-06-13", genre: "Comedy/Romance", keyIPSource: "Original" },
+            { type: "Film", title: "Diablo", networkPlatform: "Lionsgate", premiereDate: "2025-06-13", genre: "Action/Thriller", keyIPSource: "Original" },
+            { type: "Film", title: "The Unholy Trinity", networkPlatform: "Roadside Attractions / Saban Films", premiereDate: "2025-06-13", genre: "Adventure/Crime/Western", keyIPSource: "Original" },
+            { type: "Film", title: "Indiana Jones and the Last Crusade (Re-rel.)", networkPlatform: "Fathom Events", premiereDate: "2025-06-15", genre: "Action/Adventure", keyIPSource: "Re-release (Original Film)" },
+            { type: "Film", title: "28 Years Later", networkPlatform: "Sony Pictures Releasing", premiereDate: "2025-06-20", genre: "Horror/Thriller", keyIPSource: "28 Days Later Franchise (Sequel)" },
+            { type: "Film", title: "Elio", networkPlatform: "Walt Disney Studios Motion Pictures / Pixar", premiereDate: "2025-06-20", genre: "Animation/Adventure/Comedy/Family/Fantasy/Sci-Fi", keyIPSource: "Original (Pixar)" },
+            { type: "Film", title: "Bride Hard", networkPlatform: "Magenta Light Studios", premiereDate: "2025-06-20", genre: "Action/Comedy", keyIPSource: "Original" },
+            { type: "Film", title: "Everything's Going to Be Great", networkPlatform: "Lionsgate", premiereDate: "2025-06-20", genre: "Comedy/Drama", keyIPSource: "Original" },
+            { type: "Film", title: "Sovereign", networkPlatform: "Briarcliff Entertainment", premiereDate: "2025-06-20", genre: "Action/Crime/Drama/Thriller", keyIPSource: "Original" },
+            { type: "Film", title: "Marlee Matlin: Not Alone Anymore", networkPlatform: "Kino Lorber", premiereDate: "2025-06-20", genre: "Documentary/Biography", keyIPSource: "True Story (Biography)" },
+            { type: "Film", title: "Brokeback Mountain (20th Anniv.)", networkPlatform: "Focus Features", premiereDate: "2025-06-22", genre: "Drama/Romance", keyIPSource: "Re-release (Original Film)" },
+            { type: "Film", title: "The Secret World of Arrietty (15th Anniv.)", networkPlatform: "Fathom Events", premiereDate: "2025-06-22", genre: "Animation/Adventure/Family/Fantasy", keyIPSource: "Re-release (Original Film)" },
+            { type: "Film", title: "F1", networkPlatform: "Warner Bros. / Apple Original Films", premiereDate: "2025-06-27", genre: "Drama/Sport", keyIPSource: "Original" },
+            { type: "Film", title: "M3GAN 2.0", networkPlatform: "Universal Pictures / Blumhouse", premiereDate: "2025-06-27", genre: "Action/Horror/Sci-Fi/Thriller", keyIPSource: "M3GAN Franchise (Sequel)" },
+            { type: "Film", title: "Ponyboi", networkPlatform: "Fox Entertainment Studios / Gathr", premiereDate: "2025-06-27", genre: "Drama", keyIPSource: "Original" },
+            { type: "Film", title: "Sorry, Baby", networkPlatform: "A24", premiereDate: "2025-06-27", genre: "Drama", keyIPSource: "Original" },
+            { type: "Film", title: "Hot Milk", networkPlatform: "IFC Films", premiereDate: "2025-06-27", genre: "Drama/Romance", keyIPSource: "Novel" },
+            { type: "Film", title: "Clueless (30th Anniv.)", networkPlatform: "Fathom Events", premiereDate: "2025-06-29", genre: "Comedy/Romance", keyIPSource: "Re-release (Original Film)" },
+            { type: "Film", title: "K.O.", networkPlatform: "Netflix", premiereDate: "2025-06-06", genre: "Action", keyIPSource: "Original" },
+            { type: "Film", title: "Straw", networkPlatform: "Netflix", premiereDate: "2025-06-06", genre: "Drama/Thriller", keyIPSource: "Original" },
+            { type: "Film", title: "Predator: Killer of Killers", networkPlatform: "Hulu (20th Century Studios)", premiereDate: "2025-06-06", genre: "Animated Sci-Fi Action", keyIPSource: "Predator Franchise (Anthology)" },
+            { type: "Film", title: "Deep Cover", networkPlatform: "Amazon Prime Video (Amazon MGM Studios)", premiereDate: "2025-06-12", genre: "Action/Comedy", keyIPSource: "Original" },
+            { type: "Film", title: "Echo Valley", networkPlatform: "Apple TV+ (Apple Original Films)", premiereDate: "2025-06-13", genre: "Psychological Thriller", keyIPSource: "Original" },
+            { type: "Film", title: "KPop Demon Hunters", networkPlatform: "Netflix (Co-production with Sony Animation)", premiereDate: "2025-06-20", genre: "Animated Fantasy", keyIPSource: "Original" },
+
+            // July 2025 Films
+            { type: "Film", title: "Jurassic World Rebirth", networkPlatform: "Universal Pictures", premiereDate: "2025-07-02", genre: "Action, Adventure, Sci-Fi, Thriller", keyIPSource: "Jurassic Park Franchise (Soft Reboot)" },
+            { type: "Film", title: "The Old Guard 2", networkPlatform: "Netflix", premiereDate: "2025-07-02", genre: "Superhero, Action", keyIPSource: "Comic (The Old Guard Sequel)" },
+            { type: "Film", title: "Heads of State", networkPlatform: "Amazon Prime Video", premiereDate: "2025-07-02", genre: "Action, Comedy, Adventure", keyIPSource: "Original" },
+            { type: "Film", title: "Superman", networkPlatform: "Warner Bros. Pictures / DC Studios", premiereDate: "2025-07-11", genre: "Action, Adventure, Fantasy, Sci-Fi", keyIPSource: "DC Comics (Reboot)" },
+            { type: "Film", title: "Don't Let's Go to the Dogs Tonight", networkPlatform: "Sony Pictures Classics", premiereDate: "2025-07-11", genre: "Drama", keyIPSource: "Memoir (Alexandra Fuller)" },
+            { type: "Film", title: "Wild Diamond", networkPlatform: "Strand Releasing", premiereDate: "2025-07-11", genre: "Drama", keyIPSource: "Original" },
+            { type: "Film", title: "Brick", networkPlatform: "Netflix", premiereDate: "2025-07-10", genre: "Thriller, Sci-Fi, Mystery", keyIPSource: "Original (German language)" },
+            { type: "Film", title: "Madea's Destination Wedding", networkPlatform: "Netflix", premiereDate: "2025-07-11", genre: "Comedy", keyIPSource: "Madea Franchise (Sequel)" },
+            { type: "Film", title: "I Know What You Did Last Summer", networkPlatform: "Sony Pictures Releasing / Columbia Pictures", premiereDate: "2025-07-18", genre: "Horror, Slasher", keyIPSource: "IKWYDLS Franchise (Sequel)" },
+            { type: "Film", title: "Smurfs", networkPlatform: "Paramount Pictures International", premiereDate: "2025-07-18", genre: "Animation, Adventure, Comedy, Family, Musical", keyIPSource: "The Smurfs Franchise (Reboot)" },
+            { type: "Film", title: "Eddington", networkPlatform: "A24", premiereDate: "2025-07-18", genre: "Contemporary Western, Comedy, Drama, Thriller", keyIPSource: "Original" },
+            { type: "Film", title: "The Fantastic Four: First Steps", networkPlatform: "Walt Disney Studios / Marvel Studios", premiereDate: "2025-07-25", genre: "Action, Adventure, Sci-Fi", keyIPSource: "Marvel Comics (MCU Introduction)" },
+            { type: "Film", title: "Oh, Hi!", networkPlatform: "Sony Pictures Classics", premiereDate: "2025-07-25", genre: "Romantic Comedy, Dark Comedy", keyIPSource: "Original" },
+            { type: "Film", title: "Happy Gilmore 2", networkPlatform: "Netflix", premiereDate: "2025-07-25", genre: "Sports Comedy", keyIPSource: "Happy Gilmore (Sequel)" },
+            { type: "Film", title: "Together", networkPlatform: "Neon", premiereDate: "2025-07-30", genre: "Supernatural Body Horror", keyIPSource: "Original" },
+            { type: "Film", title: "40 Acres", networkPlatform: "Magnolia Pictures", premiereDate: "2025-07-01", genre: "Not Specified", keyIPSource: "Original" },
+            { type: "Film", title: "Dreams", networkPlatform: "Strand Releasing", premiereDate: "2025-07-01", genre: "Not Specified", keyIPSource: "Original" },
+
+        ].map(entry => ({
+            ...entry,
+            trailerLink: entry.trailerLink || "",
+            screenerRequested: typeof entry.screenerRequested === 'boolean' ? entry.screenerRequested : false,
+            screenerRequestedDate: entry.screenerRequestedDate || "",
+            screenerReceived: typeof entry.screenerReceived === 'boolean' ? entry.screenerReceived : false,
+            screenerReceivedDate: entry.screenerReceivedDate || "",
+            pressScreeningAttendanceRequested: typeof entry.pressScreeningAttendanceRequested === 'boolean' ? entry.pressScreeningAttendanceRequested : false,
+            pressScreeningRequestDate: entry.pressScreeningRequestDate || "",
+            pressScreeningSecured: typeof entry.pressScreeningSecured === 'boolean' ? entry.pressScreeningSecured : false,
+            pressScreeningDateTime: entry.pressScreeningDateTime || "",
+            reviewProducer: entry.reviewProducer || "",
+            contributors: Array.isArray(entry.contributors) ? entry.contributors : [],
+            reviewStatus: entry.reviewStatus || "Not Started",
+            coveragePriority: entry.coveragePriority || "Medium",
+            assignedTo: entry.assignedTo || "",
+            notes: entry.notes || "",
+            youtubeLink: entry.youtubeLink || "",
+            description: entry.description || ""
+        }));
+
+        // --- DOM Elements ---
+        const showsGridEl = document.getElementById('showsGrid');
+        const addShowBtnEl = document.getElementById('addShowBtn');
+        const showModalEl = document.getElementById('showModal');
+        const showFormEl = document.getElementById('showForm');
+        const cancelModalBtnEl = document.getElementById('cancelModalBtn');
+        const modalTitleEl = document.getElementById('modalTitle');
+        const modalErrorMessageEl = document.getElementById('modalErrorMessage');
+
+        const errorDisplayEl = document.getElementById('errorDisplay');
+        const errorMessageContentEl = document.getElementById('errorMessage');
+
+        const appLoaderEl = document.getElementById('appLoader');
+        const showsLoaderEl = document.getElementById('showsLoader');
+        const noShowsMessageEl = document.getElementById('noShowsMessage');
+
+        const searchTermInputEl = document.getElementById('searchTerm');
+        const filterTypeSelectEl = document.getElementById('filterType');
+        const filterStatusSelectEl = document.getElementById('filterStatus');
+        const filterPrioritySelectEl = document.getElementById('filterPriority');
+        const filterAssignedToSelectEl = document.getElementById('filterAssignedTo');
+        const filterPressScreeningSecuredEl = document.getElementById('filterPressScreeningSecured');
+        const sortOrderSelectEl = document.getElementById('sortOrder');
+
+        const dateFilterGranularityEl = document.getElementById('dateFilterGranularity');
+        const dateFilterReferenceDateEl = document.getElementById('dateFilterReferenceDate');
+        const dateFilterRelationEl = document.getElementById('dateFilterRelation');
+        const clearDateFilterBtnEl = document.getElementById('clearDateFilterBtn');
+        const referenceDateInputContainerEl = document.getElementById('referenceDateInputContainer');
+
+
+        const confirmationModalEl = document.getElementById('confirmationModal');
+        const confirmationTitleEl = document.getElementById('confirmationTitle');
+        const confirmationMessageEl = document.getElementById('confirmationMessage');
+        const confirmActionBtnEl = document.getElementById('confirmActionBtn');
+        const cancelConfirmBtnEl = document.getElementById('cancelConfirmBtn');
+        let currentDeleteEntryId = null;
+        let currentDeleteContributorId = null;
+
+        const manageContributorsBtnEl = document.getElementById('manageContributorsBtn');
+        const contributorManagementModalEl = document.getElementById('contributorManagementModal');
+        const newContributorNameInputEl = document.getElementById('newContributorName');
+        const addContributorBtnEl = document.getElementById('addContributorBtn');
+        const existingContributorsListEl = document.getElementById('existingContributorsList');
+        const closeContributorModalBtnEl = document.getElementById('closeContributorModalBtn');
+        const contributorsCheckboxesContainerEl = document.getElementById('contributorsCheckboxesContainer');
+
+        const tvScreenerFieldsEl = document.getElementById('tvScreenerFields');
+        const filmPressScreeningFieldsEl = document.getElementById('filmPressScreeningFields');
+        const screenerRequestedDateContainerEl = document.getElementById('screenerRequestedDateContainer');
+        const screenerReceivedDateContainerEl = document.getElementById('screenerReceivedDateContainer');
+        const pressScreeningRequestDateContainerEl = document.getElementById('pressScreeningRequestDateContainer');
+        const pressScreeningDateTimeContainerEl = document.getElementById('pressScreeningDateTimeContainer');
+
+        const bulkAddBtnEl = document.getElementById('bulkAddBtn');
+        const bulkAddModalEl = document.getElementById('bulkAddModal');
+        const bulkDataInputEl = document.getElementById('bulkDataInput');
+        const importBulkDataBtnEl = document.getElementById('importBulkDataBtn');
+        const closeBulkAddModalBtnEl = document.getElementById('closeBulkAddModalBtn');
+        const bulkAddStatusEl = document.getElementById('bulkAddStatus');
+
+        // --- Helper Functions ---
+        function displayError(message) {
+            errorMessageContentEl.textContent = message;
+            errorDisplayEl.classList.remove('hidden');
+            console.error("Displaying Error:", message);
+        }
+
+        function clearError() {
+            errorDisplayEl.classList.add('hidden');
+            errorMessageContentEl.textContent = '';
+        }
+
+        function formatDate(dateString) {
+            if (!dateString) return 'N/A';
+            try {
+                const date = new Date(dateString + 'T00:00:00');
+                if (isNaN(date.getTime())) return dateString;
+                return date.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+            } catch (e) {
+                console.warn("Error formatting date:", dateString, e);
+                return dateString;
+            }
+        }
+
+        // Date Helper Functions for Filtering
+        function getStartOfWeek(date) {
+            const d = new Date(date);
+            const day = d.getDay();
+            const diff = d.getDate() - day + (day === 0 ? -6 : 1); // adjust when day is sunday
+            return new Date(d.setDate(diff));
+        }
+
+        function getEndOfWeek(date) {
+            const d = new Date(date);
+            const day = d.getDay();
+            const diff = d.getDate() - day + (day === 0 ? 0 : 7); // adjust when day is sunday
+            return new Date(d.setDate(diff));
+        }
+
+
+        function populateDropdown(selectElement, options, addDefaultAll = true, defaultText = null) {
+            const currentValue = selectElement.value;
+            selectElement.innerHTML = '';
+            if (addDefaultAll) {
+                const defaultOption = document.createElement('option');
+                defaultOption.value = "";
+                if (defaultText) {
+                    defaultOption.textContent = defaultText;
+                } else {
+                    defaultOption.textContent = selectElement === filterAssignedToSelectEl ? "All Assigned" :
+                        (selectElement === filterStatusSelectEl ? "All Statuses" :
+                            (selectElement === filterTypeSelectEl ? "All Types" :
+                                (selectElement === filterPressScreeningSecuredEl ? "All Press Screenings" : "All Priorities")));
+                }
+                selectElement.appendChild(defaultOption);
+            }
+            options.forEach(optionValue => {
+                const option = document.createElement('option');
+                option.value = optionValue;
+                option.textContent = optionValue;
+                selectElement.appendChild(option);
+            });
+            if (options.includes(currentValue)) {
+                selectElement.value = currentValue;
+            }
+        }
+
+        function openConfirmationModal(title, message, onConfirmCallback) {
+            confirmationTitleEl.textContent = title;
+            confirmationMessageEl.textContent = message;
+            confirmationModalEl.classList.remove('hidden');
+
+            const newConfirmBtn = confirmActionBtnEl.cloneNode(true);
+            confirmActionBtnEl.parentNode.replaceChild(newConfirmBtn, confirmActionBtnEl);
+
+            document.getElementById('confirmActionBtn').onclick = () => {
+                onConfirmCallback();
+                closeConfirmationModal();
+            };
+        }
+
+        function closeConfirmationModal() {
+            confirmationModalEl.classList.add('hidden');
+        }
+
+        function getYouTubeVideoId(url) {
+            if (!url) return null;
+            let videoId = null;
+            try {
+                const parsedUrl = new URL(url);
+                if (parsedUrl.hostname === 'www.youtube.com' || parsedUrl.hostname === 'youtube.com') {
+                    videoId = parsedUrl.searchParams.get('v');
+                } else if (parsedUrl.hostname === 'youtu.be') {
+                    videoId = parsedUrl.pathname.substring(1);
+                }
+            } catch (e) {
+                const regExp = /^.*(youtube.com2\/|v\/|u\/\w\/|embed\/|watch\?v=|\&v=)([^#\&\?]*).*/;
+                const match = url.match(regExp);
+                if (match && match[2].length === 11) {
+                    videoId = match[2];
+                }
+            }
+            return videoId;
+        }
+
+
+        // --- Entry Card Rendering ---
+        function createEntryCard(entry) {
+            const card = document.createElement('div');
+            card.className = 'bg-slate-800 rounded-xl shadow-xl overflow-hidden transform hover:scale-105 transition-transform duration-200 flex flex-col';
+
+            let tvScreenerInfo = '';
+            if (entry.type === "TV Show") {
+                if (entry.screenerRequested) {
+                    tvScreenerInfo += `Link Requested ${entry.screenerRequestedDate ? '(' + formatDate(entry.screenerRequestedDate) + ')' : ''}`;
+                }
+                if (entry.screenerReceived) {
+                    tvScreenerInfo += `${tvScreenerInfo ? ' / ' : ''}Link Received ${entry.screenerReceivedDate ? '(' + formatDate(entry.screenerReceivedDate) + ')' : ''}`;
+                }
+                if (!tvScreenerInfo) tvScreenerInfo = 'N/A';
+            }
+
+            let filmPressScreeningInfo = '';
+            if (entry.type === "Film") {
+                if (entry.pressScreeningAttendanceRequested) {
+                    filmPressScreeningInfo += `Attendance Requested ${entry.pressScreeningRequestDate ? '(' + formatDate(entry.pressScreeningRequestDate) + ')' : ''}`;
+                }
+                if (entry.pressScreeningSecured) {
+                    filmPressScreeningInfo += `${filmPressScreeningInfo ? ' / ' : ''}Screening Secured ${entry.pressScreeningDateTime ? '(' + formatDate(entry.pressScreeningDateTime) + ')' : ''}`;
+                }
+                if (!filmPressScreeningInfo) filmPressScreeningInfo = 'N/A';
+            }
+
+            const typeIndicator = entry.type === "Film" ?
+                `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="mr-2 h-4 w-4 text-purple-400"><rect x="2" y="2" width="20" height="20" rx="2.18" ry="2.18"></rect><line x1="7" y1="2" x2="7" y2="22"></line><line x1="17" y1="2" x2="17" y2="22"></line><line x1="2" y1="12" x2="22" y2="12"></line><line x1="2" y1="7" x2="7" y2="7"></line><line x1="2" y1="17" x2="7" y2="17"></line><line x1="17" y1="17" x2="22" y2="17"></line><line x1="17" y1="7" x2="22" y2="7"></line></svg>` :
+                `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="mr-2 h-4 w-4 text-sky-500"><rect width="20" height="15" x="2" y="7" rx="2" ry="2"></rect><polyline points="17 2 12 7 7 2"></polyline></svg>`;
+
+            let trailerHTML = '';
+            const youtubeVideoId = getYouTubeVideoId(entry.trailerLink);
+            if (youtubeVideoId) {
+                trailerHTML = `
+                    <div class="trailer-thumbnail-container" data-video-id="${youtubeVideoId}">
+                        <img src="https://i.ytimg.com/vi/${youtubeVideoId}/mqdefault.jpg" alt="Trailer thumbnail for ${entry.title}" onerror="this.style.display='none'; this.parentElement.innerHTML = '<p class=\\'text-xs text-slate-400 p-2\\'>Trailer thumbnail unavailable.</p>';">
+                        <div class="play-button-overlay">
+                            <svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"></path></svg>
+                        </div>
+                    </div>
+                `;
+            } else if (entry.trailerLink) {
+                trailerHTML = `<p class="text-xs text-slate-300 mb-3"><span class="font-semibold text-sky-300">Trailer:</span> <a href="${entry.trailerLink}" target="_blank" rel="noopener noreferrer" class="text-sky-400 hover:text-sky-300 underline">Watch Trailer</a></p>`;
+            }
+
+            card.innerHTML = `
+                <div class="p-6 flex-grow">
+                    ${trailerHTML} 
+                    <div class="flex justify-between items-start mb-2">
+                        <h2 class="text-2xl font-semibold text-sky-400">${entry.title}</h2>
+                        <span class="text-xs uppercase font-semibold px-2 py-1 rounded-full ${entry.type === 'Film' ? 'bg-purple-500 text-purple-100' : 'bg-sky-500 text-sky-100'}">${entry.type}</span>
+                    </div>
+                    <p class="text-sm text-slate-400 mb-1 flex items-center">
+                        ${typeIndicator}
+                        ${entry.networkPlatform || 'N/A'}
+                    </p>
+                    <p class="text-sm text-slate-400 mb-1 flex items-center">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="mr-2 h-4 w-4 text-sky-500"><rect width="18" height="18" x="3" y="4" rx="2" ry="2"></rect><line x1="16" x2="16" y1="2" y2="6"></line><line x1="8" x2="8" y1="2" y2="6"></line><line x1="3" x2="21" y1="10" y2="10"></line></svg>
+                        ${formatDate(entry.premiereDate)}
+                    </p>
+                    <p class="text-sm text-slate-400 mb-3 flex items-center">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="mr-2 h-4 w-4 text-sky-500"><path d="M12 2H2v10l9.29 9.29a2.82 2.82 0 0 0 3.99-.01L22 13.99a2.82 2.82 0 0 0-.01-3.99L12 2z"></path><path d="M7 7h.01"></path></svg>
+                        ${entry.genre || 'N/A'}
+                    </p>
+                    
+                    <div class="space-y-1 text-xs text-slate-300 mb-4">
+                        <p><span class="font-semibold text-sky-300">Status:</span> ${entry.reviewStatus}</p>
+                        <p><span class="font-semibold text-sky-300">Priority:</span> ${entry.coveragePriority}</p>
+                        ${entry.type === "TV Show" ? `<p><span class="font-semibold text-sky-300">Screener Link:</span> ${tvScreenerInfo}</p>` : ''}
+                        ${entry.type === "Film" ? `<p><span class="font-semibold text-sky-300">Press Screening:</span> ${filmPressScreeningInfo}</p>` : ''}
+                        ${entry.assignedTo ? `<p><span class="font-semibold text-sky-300">Assigned:</span> ${entry.assignedTo}</p>` : ''}
+                        ${entry.reviewProducer ? `<p><span class="font-semibold text-sky-300">Producer:</span> ${entry.reviewProducer}</p>` : ''}
+                        ${entry.contributors && entry.contributors.length > 0 ? `<p><span class="font-semibold text-sky-300">Contributors:</span> ${entry.contributors.join(', ')}</p>` : ''}
+                        ${entry.notes ? `<p class="italic truncate"><span class="font-semibold text-sky-300">Notes:</span> ${entry.notes}</p>` : ''}
+                        ${entry.youtubeLink ? `<a href="${entry.youtubeLink}" target="_blank" rel="noopener noreferrer" class="text-red-400 hover:text-red-300 flex items-center"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="mr-1 h-4 w-4"><path d="M2.5 17a24.12 24.12 0 0 1 0-10 2 2 0 0 1 1.4-1.4 49.56 49.56 0 0 1 16.2 0A2 2 0 0 1 21.5 7a24.12 24.12 0 0 1 0 10 2 2 0 0 1-1.4 1.4 49.55 49.55 0 0 1-16.2 0A2 2 0 0 1 2.5 17"></path><path d="m10 15 5-3-5-3z"></path></svg> View Review</a>` : ''}
+                    </div>
+                </div>
+                <div class="bg-slate-700 p-4 flex justify-end gap-3">
+                    <button class="edit-btn text-yellow-400 hover:text-yellow-300 transition-colors p-2 rounded-md hover:bg-slate-600" data-id="${entry.id}">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
+                    </button>
+                    <button class="delete-btn text-red-400 hover:text-red-300 transition-colors p-2 rounded-md hover:bg-slate-600" data-id="${entry.id}" data-title="${entry.title}">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path><line x1="10" y1="11" x2="10" y2="17"></line><line x1="14" y1="11" x2="14" y2="17"></line></svg>
+                    </button>
+                </div>
+            `;
+            card.querySelector('.edit-btn').addEventListener('click', () => handleEditEntry(entry.id));
+            card.querySelector('.delete-btn').addEventListener('click', () => {
+                currentDeleteEntryId = entry.id;
+                currentDeleteContributorId = null;
+                openConfirmationModal(
+                    `Delete "${entry.title}"?`,
+                    "Are you sure you want to delete this entry? This action cannot be undone.",
+                    () => {
+                        if (currentDeleteEntryId) {
+                            handleDeleteEntry(currentDeleteEntryId);
+                            currentDeleteEntryId = null;
+                        }
+                    }
+                );
+            });
+
+            const thumbnailContainer = card.querySelector('.trailer-thumbnail-container');
+            if (thumbnailContainer) {
+                thumbnailContainer.addEventListener('click', () => {
+                    const videoId = thumbnailContainer.dataset.videoId;
+                    thumbnailContainer.innerHTML = `<div class="embedded-trailer"><iframe src="https://www.youtube.com/embed/${videoId}?autoplay=1&modestbranding=1&rel=0" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen></iframe></div>`;
+                }, { once: true });
+            }
+            return card;
+        }
+
+        function updateAssignedToFilterOptions() {
+            const assignedToList = [...new Set(allEntries.map(entry => entry.assignedTo).filter(Boolean))].sort();
+            populateDropdown(filterAssignedToSelectEl, assignedToList, true, "All Assigned");
+        }
+
+        function renderEntries() {
+            showsGridEl.innerHTML = '';
+            const searchTerm = searchTermInputEl.value.toLowerCase();
+            const typeFilter = filterTypeSelectEl.value;
+            const statusFilter = filterStatusSelectEl.value;
+            const priorityFilter = filterPrioritySelectEl.value;
+            const assignedToFilter = filterAssignedToSelectEl.value;
+            const pressScreeningSecuredFilter = filterPressScreeningSecuredEl.value;
+            const sortBy = sortOrderSelectEl.value;
+
+            // Date Filter Values
+            const dateGranularity = dateFilterGranularityEl.value;
+            const rawReferenceDate = dateFilterReferenceDateEl.value;
+            const dateRelation = dateFilterRelationEl.value;
+            let filterStartDate = null;
+            let filterEndDate = null;
+
+            if (dateGranularity !== "none" && rawReferenceDate) {
+                const refDate = new Date(rawReferenceDate + "T00:00:00"); // Treat as local date
+
+                if (!isNaN(refDate.getTime())) {
+                    if (dateGranularity === "day") {
+                        filterStartDate = new Date(refDate);
+                        filterEndDate = new Date(refDate);
+                    } else if (dateGranularity === "week") {
+                        filterStartDate = getStartOfWeek(new Date(refDate));
+                        filterEndDate = getEndOfWeek(new Date(refDate));
+                    } else if (dateGranularity === "month") {
+                        filterStartDate = new Date(refDate.getFullYear(), refDate.getMonth(), 1);
+                        filterEndDate = new Date(refDate.getFullYear(), refDate.getMonth() + 1, 0);
+                    } else if (dateGranularity === "quarter") {
+                        const quarter = Math.floor(refDate.getMonth() / 3);
+                        filterStartDate = new Date(refDate.getFullYear(), quarter * 3, 1);
+                        filterEndDate = new Date(refDate.getFullYear(), quarter * 3 + 3, 0);
+                    } else if (dateGranularity === "year") {
+                        filterStartDate = new Date(refDate.getFullYear(), 0, 1);
+                        filterEndDate = new Date(refDate.getFullYear(), 11, 31);
+                    }
+                    // Set time to ensure full day coverage
+                    if (filterStartDate) filterStartDate.setHours(0, 0, 0, 0);
+                    if (filterEndDate) filterEndDate.setHours(23, 59, 59, 999);
+                }
+            }
+
+
+            let filteredEntries = allEntries.filter(entry => {
+                const titleMatch = entry.title?.toLowerCase().includes(searchTerm) ?? false;
+                const networkMatch = entry.networkPlatform?.toLowerCase().includes(searchTerm) ?? false;
+                const genreMatch = entry.genre?.toLowerCase().includes(searchTerm) ?? false;
+                const matchesSearchTerm = titleMatch || networkMatch || genreMatch;
+
+                const matchesType = typeFilter ? entry.type === typeFilter : true;
+                const matchesStatus = statusFilter ? entry.reviewStatus === statusFilter : true;
+                const matchesPriority = priorityFilter ? entry.coveragePriority === priorityFilter : true;
+                const matchesAssignedTo = assignedToFilter ? entry.assignedTo === assignedToFilter : true;
+
+                let matchesPressScreening = true;
+                if (pressScreeningSecuredFilter) {
+                    if (entry.type === "Film") {
+                        matchesPressScreening = pressScreeningSecuredFilter === "yes" ? entry.pressScreeningSecured === true : entry.pressScreeningSecured === false;
+                    } else {
+                        matchesPressScreening = false;
+                    }
+                }
+
+                let matchesDateFilter = true;
+                if (dateGranularity !== "none" && filterStartDate && filterEndDate && entry.premiereDate) {
+                    try {
+                        const entryPremiereDate = new Date(entry.premiereDate + "T00:00:00");
+                        entryPremiereDate.setHours(0, 0, 0, 0); // Normalize to start of day for comparison
+
+                        if (dateRelation === "during") {
+                            matchesDateFilter = entryPremiereDate >= filterStartDate && entryPremiereDate <= filterEndDate;
+                        } else if (dateRelation === "before") {
+                            matchesDateFilter = entryPremiereDate < filterStartDate;
+                        } else if (dateRelation === "after") {
+                            matchesDateFilter = entryPremiereDate > filterEndDate;
+                        }
+                    } catch (e) {
+                        console.warn("Could not parse entry premiereDate for date filtering:", entry.premiereDate);
+                        matchesDateFilter = false; // Exclude if date is unparsable
+                    }
+                }
+
+
+                return matchesSearchTerm && matchesType && matchesStatus && matchesPriority && matchesAssignedTo && matchesPressScreening && matchesDateFilter;
+            });
+
+            filteredEntries.sort((a, b) => {
+                if (sortBy === 'title') {
+                    return (a.title || "").localeCompare(b.title || "");
+                } else if (sortBy === 'pressScreeningDateTime') {
+                    const dateAValid = a.pressScreeningDateTime && a.type === "Film";
+                    const dateBValid = b.pressScreeningDateTime && b.type === "Film";
+                    if (!dateAValid && !dateBValid) return 0;
+                    if (!dateAValid) return 1;
+                    if (!dateBValid) return -1;
+                    try {
+                        const dateA = new Date(a.pressScreeningDateTime);
+                        const dateB = new Date(b.pressScreeningDateTime);
+                        if (isNaN(dateA.getTime()) && isNaN(dateB.getTime())) return 0;
+                        if (isNaN(dateA.getTime())) return 1;
+                        if (isNaN(dateB.getTime())) return -1;
+                        return dateA - dateB;
+                    } catch (e) { return 0; }
+                } else {
+                    if (!a.premiereDate && !b.premiereDate) return 0;
+                    if (!a.premiereDate) return 1;
+                    if (!b.premiereDate) return -1;
+                    try {
+                        const dateA = new Date(a.premiereDate);
+                        const dateB = new Date(b.premiereDate);
+                        if (isNaN(dateA.getTime()) && isNaN(dateB.getTime())) return 0;
+                        if (isNaN(dateA.getTime())) return 1;
+                        if (isNaN(dateB.getTime())) return -1;
+                        return dateA - dateB;
+                    } catch (e) { return 0; }
+                }
+            });
+
+            if (filteredEntries.length === 0 && allEntries.length > 0) {
+                noShowsMessageEl.classList.remove('hidden');
+                noShowsMessageEl.querySelector('p.text-xl').textContent = "No entries match your current filters.";
+            } else if (allEntries.length === 0) {
+                noShowsMessageEl.classList.remove('hidden');
+                noShowsMessageEl.querySelector('p.text-xl').textContent = "No entries added yet.";
+            } else {
+                noShowsMessageEl.classList.add('hidden');
+            }
+
+            filteredEntries.forEach(entry => {
+                showsGridEl.appendChild(createEntryCard(entry));
+            });
+            updateAssignedToFilterOptions();
+        }
+
+        // --- Modal Logic ---
+        function toggleModalSpecificFields(entryType) {
+            if (entryType === 'Film') {
+                tvScreenerFieldsEl.style.display = 'none';
+                filmPressScreeningFieldsEl.style.display = 'block';
+            } else {
+                tvScreenerFieldsEl.style.display = 'block';
+                filmPressScreeningFieldsEl.style.display = 'none';
+            }
+        }
+
+        document.getElementById('entryType').addEventListener('change', (e) => {
+            toggleModalSpecificFields(e.target.value);
+        });
+
+        function renderContributorCheckboxesInShowModal(selectedContributorNames = []) {
+            contributorsCheckboxesContainerEl.innerHTML = '';
+            if (allContributors.length === 0) {
+                contributorsCheckboxesContainerEl.innerHTML = '<p class="text-slate-400 text-sm">No contributors added yet. Manage contributors to add some.</p>';
+                return;
+            }
+            allContributors.forEach(contributor => {
+                const div = document.createElement('div');
+                div.className = 'flex items-center';
+                const checkbox = document.createElement('input');
+                checkbox.type = 'checkbox';
+                checkbox.id = `contrib-modal-${contributor.id}`;
+                checkbox.name = 'contributors';
+                checkbox.value = contributor.name;
+                checkbox.className = 'h-4 w-4 text-sky-600 border-slate-500 rounded focus:ring-sky-500';
+                if (selectedContributorNames.includes(contributor.name)) {
+                    checkbox.checked = true;
+                }
+                const label = document.createElement('label');
+                label.htmlFor = `contrib-modal-${contributor.id}`;
+                label.textContent = contributor.name;
+                label.className = 'ml-2 block text-sm text-slate-300';
+                div.appendChild(checkbox);
+                div.appendChild(label);
+                contributorsCheckboxesContainerEl.appendChild(div);
+            });
+        }
+
+        function openModal(entryId = null) {
+            showFormEl.reset();
+            modalErrorMessageEl.classList.add('hidden');
+            modalErrorMessageEl.textContent = '';
+            const entry = entryId ? allEntries.find(e => e.id === entryId) : null;
+
+            const defaultEntryData = {
+                type: "TV Show",
+                trailerLink: "",
+                screenerRequested: false, screenerRequestedDate: "",
+                screenerReceived: false, screenerReceivedDate: "",
+                pressScreeningAttendanceRequested: false, pressScreeningRequestDate: "",
+                pressScreeningSecured: false, pressScreeningDateTime: "",
+                reviewProducer: "", contributors: [],
+                reviewStatus: "Not Started", coveragePriority: "Medium", assignedTo: "", notes: "", youtubeLink: ""
+            };
+            const currentEntryData = entry ? { ...defaultEntryData, ...entry } : { ...defaultEntryData };
+
+            if (entry) {
+                modalTitleEl.textContent = 'Edit Entry';
+                document.getElementById('showId').value = currentEntryData.id || '';
+            } else {
+                modalTitleEl.textContent = 'Add New Entry';
+                document.getElementById('showId').value = '';
+            }
+
+            document.getElementById('entryType').value = currentEntryData.type || 'TV Show';
+            document.getElementById('title').value = currentEntryData.title || '';
+            document.getElementById('networkPlatform').value = currentEntryData.networkPlatform || '';
+            document.getElementById('premiereDate').value = currentEntryData.premiereDate || '';
+            document.getElementById('trailerLink').value = currentEntryData.trailerLink || '';
+            document.getElementById('genre').value = currentEntryData.genre || '';
+            document.getElementById('keyIPSource').value = currentEntryData.keyIPSource || '';
+            document.getElementById('description').value = currentEntryData.description || '';
+            document.getElementById('reviewStatus').value = currentEntryData.reviewStatus || 'Not Started';
+            document.getElementById('coveragePriority').value = currentEntryData.coveragePriority || 'Medium';
+            document.getElementById('assignedTo').value = currentEntryData.assignedTo || '';
+            document.getElementById('notes').value = currentEntryData.notes || '';
+            document.getElementById('youtubeLink').value = currentEntryData.youtubeLink || '';
+
+            document.getElementById('screenerRequested').checked = currentEntryData.screenerRequested;
+            document.getElementById('screenerRequestedDate').value = currentEntryData.screenerRequestedDate || '';
+            document.getElementById('screenerReceived').checked = currentEntryData.screenerReceived;
+            document.getElementById('screenerReceivedDate').value = currentEntryData.screenerReceivedDate || '';
+
+            document.getElementById('pressScreeningAttendanceRequested').checked = currentEntryData.pressScreeningAttendanceRequested;
+            document.getElementById('pressScreeningRequestDate').value = currentEntryData.pressScreeningRequestDate || '';
+            document.getElementById('pressScreeningSecured').checked = currentEntryData.pressScreeningSecured;
+            document.getElementById('pressScreeningDateTime').value = currentEntryData.pressScreeningDateTime || '';
+
+            document.getElementById('reviewProducer').value = currentEntryData.reviewProducer || '';
+
+            toggleModalSpecificFields(document.getElementById('entryType').value);
+
+            screenerRequestedDateContainerEl.classList.toggle('hidden', !document.getElementById('screenerRequested').checked);
+            screenerReceivedDateContainerEl.classList.toggle('hidden', !document.getElementById('screenerReceived').checked);
+            pressScreeningRequestDateContainerEl.classList.toggle('hidden', !document.getElementById('pressScreeningAttendanceRequested').checked);
+            pressScreeningDateTimeContainerEl.classList.toggle('hidden', !document.getElementById('pressScreeningSecured').checked);
+
+            renderContributorCheckboxesInShowModal(currentEntryData.contributors || []);
+            showModalEl.classList.remove('hidden');
+        }
+
+        function closeModal() {
+            showModalEl.classList.add('hidden');
+        }
+
+        // --- Contributor Management ---
+        function loadContributorsFromLocalStorage() {
+            try {
+                const contributorsJSON = localStorage.getItem(LOCAL_STORAGE_KEY_CONTRIBUTORS);
+                allContributors = contributorsJSON ? JSON.parse(contributorsJSON) : [];
+            } catch (error) {
+                console.error("Error loading contributors:", error);
+                allContributors = [];
+            }
+        }
+
+        function saveContributorsToLocalStorage() {
+            try {
+                localStorage.setItem(LOCAL_STORAGE_KEY_CONTRIBUTORS, JSON.stringify(allContributors));
+            } catch (error) {
+                console.error("Error saving contributors:", error);
+            }
+        }
+
+        function addContributor() {
+            const name = newContributorNameInputEl.value.trim();
+            if (name && !allContributors.find(c => c.name.toLowerCase() === name.toLowerCase())) {
+                allContributors.push({ id: generateId(), name: name });
+                saveContributorsToLocalStorage();
+                renderContributorsInManagementModal();
+                newContributorNameInputEl.value = '';
+            } else if (name) {
+                modalErrorMessageEl.textContent = "Contributor with this name already exists.";
+                modalErrorMessageEl.classList.remove('hidden');
+                setTimeout(() => modalErrorMessageEl.classList.add('hidden'), 3000);
+            }
+        }
+
+        function deleteContributor(id) {
+            allContributors = allContributors.filter(c => c.id !== id);
+            saveContributorsToLocalStorage();
+            renderContributorsInManagementModal();
+        }
+
+        function renderContributorsInManagementModal() {
+            existingContributorsListEl.innerHTML = '';
+            if (allContributors.length === 0) {
+                existingContributorsListEl.innerHTML = '<p class="text-slate-400 text-sm">No contributors added yet.</p>';
+                return;
+            }
+            allContributors.forEach(contributor => {
+                const div = document.createElement('div');
+                div.className = 'flex justify-between items-center p-2 bg-slate-600 rounded';
+                const nameSpan = document.createElement('span');
+                nameSpan.textContent = contributor.name;
+                nameSpan.className = 'text-slate-100';
+                const deleteBtn = document.createElement('button');
+                deleteBtn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-red-400 hover:text-red-300"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>`;
+                deleteBtn.className = 'p-1 hover:bg-slate-700 rounded';
+                deleteBtn.onclick = () => {
+                    currentDeleteContributorId = contributor.id;
+                    currentDeleteEntryId = null;
+                    openConfirmationModal(
+                        `Delete Contributor "${contributor.name}"?`,
+                        "Are you sure you want to delete this contributor? This will not remove them from existing entries they are assigned to.",
+                        () => {
+                            if (currentDeleteContributorId) {
+                                deleteContributor(currentDeleteContributorId);
+                                currentDeleteContributorId = null;
+                            }
+                        }
+                    );
+                };
+                div.appendChild(nameSpan);
+                div.appendChild(deleteBtn);
+                existingContributorsListEl.appendChild(div);
+            });
+        }
+
+        function openContributorManagementModal() {
+            renderContributorsInManagementModal();
+            contributorManagementModalEl.classList.remove('hidden');
+        }
+        function closeContributorManagementModal() {
+            contributorManagementModalEl.classList.add('hidden');
+        }
+
+        // --- Bulk Add Modal Logic ---
+        function openBulkAddModal() {
+            bulkDataInputEl.value = '';
+            bulkAddStatusEl.textContent = '';
+            bulkAddStatusEl.className = 'text-sm mb-4';
+            bulkAddModalEl.classList.remove('hidden');
+        }
+        function closeBulkAddModal() {
+            bulkAddModalEl.classList.add('hidden');
+        }
+
+        function handleBulkAdd() {
+            const jsonData = bulkDataInputEl.value.trim();
+            if (!jsonData) {
+                bulkAddStatusEl.textContent = "Input is empty.";
+                bulkAddStatusEl.className = 'text-sm mb-4 text-yellow-400';
+                return;
+            }
+
+            try {
+                const parsedEntries = JSON.parse(jsonData);
+                if (!Array.isArray(parsedEntries)) {
+                    throw new Error("Input must be a JSON array of entry objects.");
+                }
+
+                let addedCount = 0;
+                let failedCount = 0;
+
+                parsedEntries.forEach(entry => {
+                    if (entry && entry.title && entry.premiereDate && entry.type && (entry.type === "TV Show" || entry.type === "Film")) {
+                        const newEntry = {
+                            ...defaultEntryStructure,
+                            ...entry,
+                            id: generateId(),
+                            createdAt: new Date().toISOString(),
+                        };
+                        newEntry.screenerRequested = typeof entry.screenerRequested === 'boolean' ? entry.screenerRequested : defaultEntryStructure.screenerRequested;
+                        newEntry.screenerReceived = typeof entry.screenerReceived === 'boolean' ? entry.screenerReceived : defaultEntryStructure.screenerReceived;
+                        newEntry.pressScreeningAttendanceRequested = typeof entry.pressScreeningAttendanceRequested === 'boolean' ? entry.pressScreeningAttendanceRequested : defaultEntryStructure.pressScreeningAttendanceRequested;
+                        newEntry.pressScreeningSecured = typeof entry.pressScreeningSecured === 'boolean' ? entry.pressScreeningSecured : defaultEntryStructure.pressScreeningSecured;
+                        newEntry.contributors = Array.isArray(entry.contributors) ? entry.contributors : defaultEntryStructure.contributors;
+
+                        allEntries.push(newEntry);
+                        addedCount++;
+                    } else {
+                        failedCount++;
+                        console.warn("Skipping invalid entry during bulk add:", entry);
+                    }
+                });
+
+                saveEntriesToLocalStorage();
+                renderEntries();
+                bulkAddStatusEl.textContent = `${addedCount} entries added successfully. ${failedCount} entries failed or were skipped due to missing required fields (type, title, premiereDate).`;
+                bulkAddStatusEl.className = `text-sm mb-4 ${failedCount > 0 ? 'text-yellow-400' : 'text-green-400'}`;
+                if (addedCount > 0 && failedCount === 0) {
+                    setTimeout(closeBulkAddModal, 2000);
+                }
+
+            } catch (error) {
+                console.error("Error parsing or processing bulk data:", error);
+                bulkAddStatusEl.textContent = "Error: Invalid JSON format or data. " + error.message;
+                bulkAddStatusEl.className = 'text-sm mb-4 text-red-400';
+            }
+        }
+
+        // --- LocalStorage CRUD Operations for Entries ---
+        function generateId() {
+            return Date.now().toString(36) + Math.random().toString(36).substring(2);
+        }
+
+        const defaultEntryStructure = {
+            type: "TV Show", title: "", networkPlatform: "", premiereDate: "", genre: "", keyIPSource: "",
+            description: "", trailerLink: "", reviewStatus: "Not Started", coveragePriority: "Medium",
+            assignedTo: "", reviewProducer: "", contributors: [], screenerRequested: false,
+            screenerRequestedDate: "", screenerReceived: false, screenerReceivedDate: "",
+            pressScreeningAttendanceRequested: false, pressScreeningRequestDate: "",
+            pressScreeningSecured: false, pressScreeningDateTime: "", notes: "", youtubeLink: "",
+            id: null, createdAt: null, updatedAt: null
+        };
+
+        function migrateEntry(oldEntry) {
+            const newEntry = { ...defaultEntryStructure, ...oldEntry };
+            newEntry.screenerRequested = typeof oldEntry.screenerRequested === 'boolean' ? oldEntry.screenerRequested : false;
+            newEntry.screenerReceived = typeof oldEntry.screenerReceived === 'boolean' ? oldEntry.screenerReceived : false;
+            newEntry.pressScreeningAttendanceRequested = typeof oldEntry.pressScreeningAttendanceRequested === 'boolean' ? oldEntry.pressScreeningAttendanceRequested : false;
+            newEntry.pressScreeningSecured = typeof oldEntry.pressScreeningSecured === 'boolean' ? oldEntry.pressScreeningSecured : false;
+            newEntry.contributors = Array.isArray(oldEntry.contributors) ? oldEntry.contributors : [];
+            newEntry.id = oldEntry.id || generateId();
+            newEntry.createdAt = oldEntry.createdAt || new Date().toISOString();
+            if (newEntry.type !== "TV Show" && newEntry.type !== "Film") {
+                newEntry.type = "TV Show";
+            }
+            if (oldEntry.entryType && (oldEntry.entryType === "TV Show" || oldEntry.entryType === "Film")) {
+                newEntry.type = oldEntry.entryType;
+            }
+            delete newEntry.entryType;
+
+            return newEntry;
+        }
+
+        function loadEntriesFromLocalStorage() {
+            showsLoaderEl.classList.remove('hidden');
+            let successfullyLoadedAndMigrated = false;
+            let attemptedKeys = [];
+            const keysToTry = [CURRENT_STORAGE_KEY, PREVIOUS_STORAGE_KEY_V1, OLDEST_KNOWN_KEY];
+
+            for (const key of keysToTry) {
+                if (successfullyLoadedAndMigrated) break;
+                attemptedKeys.push(key);
+                try {
+                    const entriesJSON = localStorage.getItem(key);
+                    if (entriesJSON) {
+                        console.log(`Attempting to load from key: ${key}`);
+                        const parsedEntries = JSON.parse(entriesJSON);
+                        if (Array.isArray(parsedEntries)) {
+                            allEntries = parsedEntries.map(migrateEntry);
+                            console.log(`Successfully loaded and migrated ${allEntries.length} entries from key: ${key}`);
+                            if (key !== CURRENT_STORAGE_KEY) {
+                                saveEntriesToLocalStorage();
+                                // localStorage.removeItem(key); // Keep old data for safety during transition
+                                // console.log(`Data from old key ${key} migrated to ${CURRENT_STORAGE_KEY}. Old key NOT removed.`);
+                            }
+                            successfullyLoadedAndMigrated = true;
+                            break;
+                        } else {
+                            console.warn(`Data in key ${key} is not an array.`);
+                        }
+                    }
+                } catch (error) {
+                    console.warn(`Could not parse entries from key: ${key}`, error);
+                }
+            }
+
+            if (!successfullyLoadedAndMigrated || allEntries.length === 0) {
+                let lastAttemptedKeyWithValue = null;
+                for (const key of attemptedKeys) {
+                    if (localStorage.getItem(key)) {
+                        lastAttemptedKeyWithValue = key;
+                        break;
+                    }
+                }
+                if (lastAttemptedKeyWithValue) {
+                    displayError(`Could not load entries from storage (tried keys: ${attemptedKeys.join(', ')}). Data under '${lastAttemptedKeyWithValue}' might be corrupted. Falling back to initial data set. Your previous data might be lost if it was unrecoverable.`);
+                } else {
+                    console.log("No existing data found under known keys. Loading initial entries dataset.");
+                }
+                allEntries = initialEntries.map(entry => ({
+                    ...migrateEntry(entry),
+                    id: generateId(),
+                    createdAt: new Date().toISOString(),
+                }));
+                saveEntriesToLocalStorage();
+                console.log("Initial entry data loaded and saved to local storage.");
+            }
+
+            renderEntries();
+            showsLoaderEl.classList.add('hidden');
+        }
+
+        function saveEntriesToLocalStorage() {
+            try {
+                localStorage.setItem(CURRENT_STORAGE_KEY, JSON.stringify(allEntries));
+            } catch (error) {
+                console.error("Error saving entries to local storage:", error);
+                displayError("Could not save entries. Local storage might be full or disabled.");
+            }
+        }
+
+        function handleEditEntry(entryId) {
+            openModal(entryId);
+        }
+
+        function handleDeleteEntry(id) {
+            console.log(`[handleDeleteEntry] Attempting to delete entry with ID: ${id}`);
+            allEntries = allEntries.filter(entry => entry.id !== id);
+            saveEntriesToLocalStorage();
+            renderEntries();
+            console.log(`[handleDeleteEntry] Entry with ID: ${id} deleted successfully.`);
+            clearError();
+        }
+
+        showFormEl.addEventListener('submit', (e) => {
+            e.preventDefault();
+
+            const formData = new FormData(showFormEl);
+            const entryDataFromForm = Object.fromEntries(formData.entries());
+
+            entryDataFromForm.screenerRequested = document.getElementById('screenerRequested').checked;
+            entryDataFromForm.screenerReceived = document.getElementById('screenerReceived').checked;
+            entryDataFromForm.pressScreeningAttendanceRequested = document.getElementById('pressScreeningAttendanceRequested').checked;
+            entryDataFromForm.pressScreeningSecured = document.getElementById('pressScreeningSecured').checked;
+
+            const selectedContributors = [];
+            document.querySelectorAll('#contributorsCheckboxesContainer input[name="contributors"]:checked').forEach(checkbox => {
+                selectedContributors.push(checkbox.value);
+            });
+            entryDataFromForm.contributors = selectedContributors;
+
+            if (entryDataFromForm.entryType === "TV Show") {
+                entryDataFromForm.pressScreeningAttendanceRequested = false;
+                entryDataFromForm.pressScreeningRequestDate = "";
+                entryDataFromForm.pressScreeningSecured = false;
+                entryDataFromForm.pressScreeningDateTime = "";
+            } else if (entryDataFromForm.entryType === "Film") {
+                entryDataFromForm.screenerRequested = false;
+                entryDataFromForm.screenerRequestedDate = "";
+                entryDataFromForm.screenerReceived = false;
+                entryDataFromForm.screenerReceivedDate = "";
+            }
+
+            if (!entryDataFromForm.title || !entryDataFromForm.premiereDate) {
+                modalErrorMessageEl.textContent = "Title and Premiere/Release Date are required.";
+                modalErrorMessageEl.classList.remove('hidden');
+                return;
+            }
+            modalErrorMessageEl.classList.add('hidden');
+
+            console.log(`[handleSaveEntry] Attempting to save entry. ID: ${entryDataFromForm.id || 'New Entry'}`);
+
+            if (entryDataFromForm.id) {
+                allEntries = allEntries.map(s => s.id === entryDataFromForm.id ? { ...s, ...entryDataFromForm, updatedAt: new Date().toISOString() } : s);
+                console.log(`[handleSaveEntry] Entry with ID: ${entryDataFromForm.id} updated successfully.`);
+            } else {
+                const newEntry = {
+                    ...defaultEntryStructure,
+                    ...entryDataFromForm,
+                    id: generateId(),
+                    createdAt: new Date().toISOString(),
+                    updatedAt: null
+                };
+                allEntries.push(newEntry);
+                console.log(`[handleSaveEntry] New entry added successfully with ID: ${newEntry.id}`);
+            }
+            saveEntriesToLocalStorage();
+            renderEntries();
+            closeModal();
+            clearError();
+        });
+
+        // --- Event Listeners ---
+        addShowBtnEl.addEventListener('click', () => openModal());
+        cancelModalBtnEl.addEventListener('click', closeModal);
+
+        searchTermInputEl.addEventListener('input', renderEntries);
+        filterTypeSelectEl.addEventListener('change', renderEntries);
+        filterStatusSelectEl.addEventListener('change', renderEntries);
+        filterPrioritySelectEl.addEventListener('change', renderEntries);
+        filterAssignedToSelectEl.addEventListener('change', renderEntries);
+        filterPressScreeningSecuredEl.addEventListener('change', renderEntries);
+        sortOrderSelectEl.addEventListener('change', renderEntries);
+
+        dateFilterGranularityEl.addEventListener('change', renderEntries);
+        dateFilterReferenceDateEl.addEventListener('change', renderEntries);
+        dateFilterRelationEl.addEventListener('change', renderEntries);
+        clearDateFilterBtnEl.addEventListener('click', () => {
+            dateFilterGranularityEl.value = "none";
+            dateFilterReferenceDateEl.value = "";
+            dateFilterRelationEl.value = "during";
+            referenceDateInputContainerEl.style.display = 'none'; // Hide date input when cleared
+            renderEntries();
+        });
+        dateFilterGranularityEl.addEventListener('change', () => { // Show/hide date input based on granularity
+            referenceDateInputContainerEl.style.display = dateFilterGranularityEl.value === 'none' ? 'none' : 'block';
+        });
+
+
+        cancelConfirmBtnEl.addEventListener('click', closeConfirmationModal);
+
+        manageContributorsBtnEl.addEventListener('click', openContributorManagementModal);
+        addContributorBtnEl.addEventListener('click', addContributor);
+        closeContributorModalBtnEl.addEventListener('click', closeContributorManagementModal);
+
+        bulkAddBtnEl.addEventListener('click', openBulkAddModal);
+        importBulkDataBtnEl.addEventListener('click', handleBulkAdd);
+        closeBulkAddModalBtnEl.addEventListener('click', closeBulkAddModal);
+
+        document.getElementById('screenerRequested').addEventListener('change', (e) => {
+            screenerRequestedDateContainerEl.classList.toggle('hidden', !e.target.checked);
+            if (!e.target.checked) document.getElementById('screenerRequestedDate').value = '';
+        });
+        document.getElementById('screenerReceived').addEventListener('change', (e) => {
+            screenerReceivedDateContainerEl.classList.toggle('hidden', !e.target.checked);
+            if (!e.target.checked) document.getElementById('screenerReceivedDate').value = '';
+        });
+        document.getElementById('pressScreeningAttendanceRequested').addEventListener('change', (e) => {
+            pressScreeningRequestDateContainerEl.classList.toggle('hidden', !e.target.checked);
+            if (!e.target.checked) document.getElementById('pressScreeningRequestDate').value = '';
+        });
+        document.getElementById('pressScreeningSecured').addEventListener('change', (e) => {
+            pressScreeningDateTimeContainerEl.classList.toggle('hidden', !e.target.checked);
+            if (!e.target.checked) document.getElementById('pressScreeningDateTime').value = '';
+        });
+
+        // --- Initialization ---
+        function initializeAppUI() {
+            document.getElementById('currentYear').textContent = new Date().getFullYear();
+            document.getElementById('storageInfo').textContent = `Data is stored locally in your browser. Clearing browser data may remove your saved entries. Current key: ${CURRENT_STORAGE_KEY}`;
+
+            populateDropdown(document.getElementById('reviewStatus'), reviewStatuses, false);
+            populateDropdown(document.getElementById('coveragePriority'), coveragePriorities, false);
+
+            populateDropdown(filterStatusSelectEl, reviewStatuses, true, "All Statuses");
+            populateDropdown(filterPrioritySelectEl, coveragePriorities, true, "All Priorities");
+
+            // Set default state for date filter UI
+            referenceDateInputContainerEl.style.display = 'none';
+            dateFilterReferenceDateEl.valueAsDate = new Date(); // Default to today
+
+            appLoaderEl.classList.remove('hidden');
+            loadContributorsFromLocalStorage();
+            loadEntriesFromLocalStorage();
+            appLoaderEl.classList.add('hidden');
+        }
+
+        initializeAppUI();
+
+    </script>
+
+</body>
+
+</html>
