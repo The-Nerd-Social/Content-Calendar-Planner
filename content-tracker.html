@@ -274,6 +274,17 @@
                     class="flex items-center justify-center bg-teal-500 hover:bg-teal-600 text-white font-semibold py-2 px-3 rounded-lg shadow-md transition duration-150 ease-in-out text-xs">
                     Bulk Add Entries
                 </button>
+                <button id="exportDataBtn"
+                    class="flex items-center justify-center bg-green-500 hover:bg-green-600 text-white font-semibold py-2 px-3 rounded-lg shadow-md transition duration-150 ease-in-out text-xs">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none"
+                        stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+                        class="mr-1 h-4 w-4">
+                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                        <polyline points="7 10 12 15 17 10"></polyline>
+                        <line x1="12" y1="15" x2="12" y2="3"></line>
+                    </svg>
+                    Export Data
+                </button>
                 <button id="addShowBtn"
                     class="flex items-center justify-center bg-sky-500 hover:bg-sky-600 text-white font-semibold py-2 px-4 rounded-lg shadow-md transition duration-150 ease-in-out text-xs">
                     <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none"
@@ -746,6 +757,7 @@
         const importBulkDataBtnEl = document.getElementById('importBulkDataBtn');
         const closeBulkAddModalBtnEl = document.getElementById('closeBulkAddModalBtn');
         const bulkAddStatusEl = document.getElementById('bulkAddStatus');
+        const exportDataBtnEl = document.getElementById('exportDataBtn');
 
         // --- Helper Functions ---
         function displayError(message) {
@@ -1299,7 +1311,36 @@
             contributorManagementModalEl.classList.add('hidden');
         }
 
-        // --- Bulk Add Modal Logic ---
+        // --- Data Import/Export ---
+        function handleExportData() {
+            try {
+                const dataToExport = {
+                    version: '2.0',
+                    exportedAt: new Date().toISOString(),
+                    entries: allEntries,
+                    contributors: allContributors
+                };
+                const jsonString = JSON.stringify(dataToExport, null, 2);
+                const blob = new Blob([jsonString], { type: 'application/json' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+
+                const date = new Date();
+                const dateString = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+                a.download = `content-planner-backup-${dateString}.json`;
+                a.href = url;
+
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+                console.log("Data exported successfully.");
+            } catch (error) {
+                console.error("Error exporting data:", error);
+                displayError("An unexpected error occurred while exporting the data.");
+            }
+        }
+
         function openBulkAddModal() {
             bulkDataInputEl.value = '';
             bulkAddStatusEl.textContent = '';
@@ -1574,6 +1615,8 @@
         bulkAddBtnEl.addEventListener('click', openBulkAddModal);
         importBulkDataBtnEl.addEventListener('click', handleBulkAdd);
         closeBulkAddModalBtnEl.addEventListener('click', closeBulkAddModal);
+
+        exportDataBtnEl.addEventListener('click', handleExportData);
 
         document.getElementById('screenerRequested').addEventListener('change', (e) => {
             screenerRequestedDateContainerEl.classList.toggle('hidden', !e.target.checked);
